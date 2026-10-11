@@ -64,7 +64,7 @@ export class DockManager {
     Main.layoutManager.addTopChrome(this._container);
 
     // Icon manager: populates the container with app buttons.
-    this._iconManager = new IconManager(
+    const iconManager = new IconManager(
       this._container,
       settings.get_int("icon-size"),
       settings.get_boolean("running-indicators"),
@@ -72,6 +72,7 @@ export class DockManager {
       settings.get_double("magnification-scale"),
       settings.get_int("running-indicator-style"),
     );
+    this._iconManager = iconManager;
     this._iconManager.setOnClicked((app) => this._onAppClicked(app));
     this._iconManager.setOnIconsChanged(() => this._updatePosition());
     this._iconManager.setOnMediaAction((action) => this._onMediaAction(action));
@@ -96,14 +97,15 @@ export class DockManager {
     this._iconManager.start();
 
     // Magnification: scale icons on hover.
-    this._magnification = new Magnification(
+    const magnification = new Magnification(
       this._container,
       settings.get_boolean("magnification-enabled"),
       settings.get_double("magnification-scale"),
       settings.get_int("magnification-falloff"),
       settings.get_int("magnification-framerate"),
     );
-    this._magnification.start();
+    this._magnification = magnification;
+    magnification.start();
 
     // Media manager: MPRIS integration for music controls.
     this._mediaManager = new MediaManager();
@@ -119,13 +121,8 @@ export class DockManager {
     this._registerKeybindings();
     this._updatePosition();
     this._signals.connect(global.display, "workareas-changed", () => this._updatePosition());
-    // Monitor changes are emitted by Meta.MonitorManager, not Meta.Display.
-    // Connecting this signal to global.display breaks extension startup on
-    // GNOME Shell 50 with "No signal 'monitors-changed'".
     this._signals.connect(global.backend.get_monitor_manager(), "monitors-changed", () => {
-      if (this._iconManager) {
-        this._iconManager.refreshResourceScale();
-      }
+      iconManager.refreshResourceScale();
       this._updatePosition();
     });
 
@@ -153,12 +150,8 @@ export class DockManager {
       }
     });
     this._signals.connect(settings, "changed::magnification-scale", () => {
-      if (this._magnification) {
-        this._magnification.setMaxScale(settings.get_double("magnification-scale"));
-      }
-      if (this._iconManager) {
-        this._iconManager.setMagnificationScale(settings.get_double("magnification-scale"));
-      }
+      magnification.setMaxScale(settings.get_double("magnification-scale"));
+      iconManager.setMagnificationScale(settings.get_double("magnification-scale"));
     });
     this._signals.connect(settings, "changed::magnification-falloff", () => {
       if (this._magnification) {

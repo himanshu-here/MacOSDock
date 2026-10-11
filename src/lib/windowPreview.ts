@@ -206,14 +206,7 @@ export class WindowPreviewPopup {
     // Window thumbnail using Clutter.Clone of the window actor
     const windowActors = global.get_window_actors();
     for (const wa of windowActors) {
-      const waRecord = wa as unknown as {
-        get_meta_window?: () => Meta.Window;
-        meta_window?: Meta.Window;
-      };
-      const metaWin2 =
-        typeof waRecord.get_meta_window === "function"
-          ? waRecord.get_meta_window()
-          : waRecord.meta_window;
+      const metaWin2 = wa.get_meta_window();
       if (metaWin2 === metaWin) {
         const clone = new Clutter.Clone({
           source: wa,
