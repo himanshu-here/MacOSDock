@@ -73,28 +73,27 @@ export class DockManager {
       settings.get_int("running-indicator-style"),
     );
     this._iconManager = iconManager;
-    this._iconManager.setOnClicked((app) => this._onAppClicked(app));
-    this._iconManager.setOnIconsChanged(() => this._updatePosition());
-    this._iconManager.setOnMediaAction((action) => this._onMediaAction(action));
-    this._iconManager.setOnContextMenuActorChanged((actor) => {
+    iconManager.setOnClicked((app) => this._onAppClicked(app));
+    iconManager.setOnIconsChanged(() => this._updatePosition());
+    iconManager.setOnMediaAction((action) => this._onMediaAction(action));
+    iconManager.setOnContextMenuActorChanged((actor) => {
       if (this._visibility) {
         this._visibility.setContextMenuActor(actor);
       }
     });
-    this._iconManager.setShowRunningApps(settings.get_boolean("show-running-apps"));
-    this._iconManager.setWorkspaceMode(settings.get_int("dock-workspace-mode"));
-    this._iconManager.setMediaIndicatorEnabled(settings.get_boolean("media-indicator"));
-    this._iconManager.setMediaControlsEnabled(settings.get_boolean("media-controls"));
-    this._iconManager.setDragReorderEnabled(settings.get_boolean("drag-reorder"));
-    this._iconManager.setOnDragStateChanged((dragging) => this._onDragStateChanged(dragging));
-
+    iconManager.setShowRunningApps(settings.get_boolean("show-running-apps"));
+    iconManager.setWorkspaceMode(settings.get_int("dock-workspace-mode"));
+    iconManager.setMediaIndicatorEnabled(settings.get_boolean("media-indicator"));
+    iconManager.setMediaControlsEnabled(settings.get_boolean("media-controls"));
+    iconManager.setDragReorderEnabled(settings.get_boolean("drag-reorder"));
     // Window preview popup
     this._previewPopup = new WindowPreviewPopup();
-    this._previewPopup.setPreviewWidth(settings.get_int("preview-scale"));
-    this._iconManager.setPreviewPopup(this._previewPopup);
-    this._iconManager.setWindowPreviewsEnabled(settings.get_boolean("window-previews"));
+    const previewPopup = this._previewPopup;
+    previewPopup.setPreviewWidth(settings.get_int("preview-scale"));
+    iconManager.setPreviewPopup(previewPopup);
+    iconManager.setWindowPreviewsEnabled(settings.get_boolean("window-previews"));
 
-    this._iconManager.start();
+    iconManager.start();
 
     // Magnification: scale icons on hover.
     const magnification = new Magnification(
@@ -106,13 +105,21 @@ export class DockManager {
     );
     this._magnification = magnification;
     magnification.start();
+    iconManager.setOnDragStateChanged((dragging) => {
+      previewPopup.cancelScheduledHide();
+      previewPopup.hide();
+      if (dragging) {
+        magnification.pause();
+      } else {
+        magnification.resume();
+      }
+      this._visibility?.setDragActive(dragging);
+    });
 
     // Media manager: MPRIS integration for music controls.
     this._mediaManager = new MediaManager();
     this._mediaManager.setOnStateChanged((app) => {
-      if (this._iconManager) {
-        this._iconManager.setPlayingApp(app?.get_id() ?? null);
-      }
+      iconManager.setPlayingApp(app?.get_id() ?? null);
     });
     this._mediaManager.start();
 
@@ -132,9 +139,7 @@ export class DockManager {
 
     // Live settings.
     this._signals.connect(settings, "changed::icon-size", () => {
-      if (this._iconManager) {
-        this._iconManager.setIconSize(settings.get_int("icon-size"));
-      }
+      iconManager.setIconSize(settings.get_int("icon-size"));
       this._updatePosition();
     });
     this._signals.connect(settings, "changed::auto-hide", () => {
@@ -145,23 +150,17 @@ export class DockManager {
       }
     });
     this._signals.connect(settings, "changed::magnification-enabled", () => {
-      if (this._magnification) {
-        this._magnification.setEnabled(settings.get_boolean("magnification-enabled"));
-      }
+      magnification.setEnabled(settings.get_boolean("magnification-enabled"));
     });
     this._signals.connect(settings, "changed::magnification-scale", () => {
       magnification.setMaxScale(settings.get_double("magnification-scale"));
       iconManager.setMagnificationScale(settings.get_double("magnification-scale"));
     });
     this._signals.connect(settings, "changed::magnification-falloff", () => {
-      if (this._magnification) {
-        this._magnification.setFalloffDistance(settings.get_int("magnification-falloff"));
-      }
+      magnification.setFalloffDistance(settings.get_int("magnification-falloff"));
     });
     this._signals.connect(settings, "changed::running-indicators", () => {
-      if (this._iconManager) {
-        this._iconManager.setRunningIndicatorsEnabled(settings.get_boolean("running-indicators"));
-      }
+      iconManager.setRunningIndicatorsEnabled(settings.get_boolean("running-indicators"));
     });
     this._signals.connect(settings, "changed::animation-duration", () => {
       if (this._visibility) {
@@ -169,19 +168,13 @@ export class DockManager {
       }
     });
     this._signals.connect(settings, "changed::magnification-framerate", () => {
-      if (this._magnification) {
-        this._magnification.setFramerate(settings.get_int("magnification-framerate"));
-      }
+      magnification.setFramerate(settings.get_int("magnification-framerate"));
     });
     this._signals.connect(settings, "changed::icon-quality", () => {
-      if (this._iconManager) {
-        this._iconManager.setQuality(settings.get_int("icon-quality"));
-      }
+      iconManager.setQuality(settings.get_int("icon-quality"));
     });
     this._signals.connect(settings, "changed::running-indicator-style", () => {
-      if (this._iconManager) {
-        this._iconManager.setIndicatorStyle(settings.get_int("running-indicator-style"));
-      }
+      iconManager.setIndicatorStyle(settings.get_int("running-indicator-style"));
     });
     this._signals.connect(settings, "changed::show-threshold", () => {
       if (this._visibility && settings.get_boolean("auto-hide")) {
@@ -194,9 +187,7 @@ export class DockManager {
     this._signals.connect(settings, "changed::dock-blur-enabled", () => this._applyDockStyle());
     this._signals.connect(settings, "changed::dock-position", () => this._applyDockPosition());
     this._signals.connect(settings, "changed::show-applications-button", () => {
-      if (this._iconManager) {
-        this._iconManager.setShowAppButton(settings.get_boolean("show-applications-button"));
-      }
+      iconManager.setShowAppButton(settings.get_boolean("show-applications-button"));
       this._updatePosition();
     });
     this._signals.connect(settings, "changed::enable-keyboard-nav", () => {
@@ -205,47 +196,31 @@ export class DockManager {
     });
     this._signals.connect(settings, "changed::window-previews", () => {
       const enabled = settings.get_boolean("window-previews");
-      if (this._iconManager) {
-        this._iconManager.setWindowPreviewsEnabled(enabled);
-      }
-      if (!enabled && this._previewPopup) {
-        this._previewPopup.hide();
-      }
+      iconManager.setWindowPreviewsEnabled(enabled);
+      if (!enabled) previewPopup.hide();
     });
     this._signals.connect(settings, "changed::preview-scale", () => {
-      if (this._previewPopup) {
-        this._previewPopup.setPreviewWidth(settings.get_int("preview-scale"));
-      }
+      previewPopup.setPreviewWidth(settings.get_int("preview-scale"));
     });
     this._signals.connect(settings, "changed::show-running-apps", () => {
-      if (this._iconManager) {
-        this._iconManager.setShowRunningApps(settings.get_boolean("show-running-apps"));
-      }
+      iconManager.setShowRunningApps(settings.get_boolean("show-running-apps"));
     });
     this._signals.connect(settings, "changed::dock-workspace-mode", () => {
-      if (this._iconManager) {
-        this._iconManager.setWorkspaceMode(settings.get_int("dock-workspace-mode"));
-      }
+      iconManager.setWorkspaceMode(settings.get_int("dock-workspace-mode"));
     });
     this._signals.connect(global.workspace_manager, "workspace-switched", () => {
-      if (this._iconManager && this._settings?.get_int("dock-workspace-mode") === 1) {
-        this._iconManager.reload();
+      if (settings.get_int("dock-workspace-mode") === 1) {
+        iconManager.reload();
       }
     });
     this._signals.connect(settings, "changed::media-indicator", () => {
-      if (this._iconManager) {
-        this._iconManager.setMediaIndicatorEnabled(settings.get_boolean("media-indicator"));
-      }
+      iconManager.setMediaIndicatorEnabled(settings.get_boolean("media-indicator"));
     });
     this._signals.connect(settings, "changed::drag-reorder", () => {
-      if (this._iconManager) {
-        this._iconManager.setDragReorderEnabled(settings.get_boolean("drag-reorder"));
-      }
+      iconManager.setDragReorderEnabled(settings.get_boolean("drag-reorder"));
     });
     this._signals.connect(settings, "changed::media-controls", () => {
-      if (this._iconManager) {
-        this._iconManager.setMediaControlsEnabled(settings.get_boolean("media-controls"));
-      }
+      iconManager.setMediaControlsEnabled(settings.get_boolean("media-controls"));
     });
 
     if (settings.get_boolean("auto-hide")) {
@@ -345,17 +320,6 @@ export class DockManager {
     }
   }
 
-  private _onDragStateChanged(dragging: boolean): void {
-    this._previewPopup?.cancelScheduledHide();
-    this._previewPopup?.hide();
-    if (dragging) {
-      this._magnification?.pause();
-    } else {
-      this._magnification?.resume();
-    }
-    this._visibility?.setDragActive(dragging);
-  }
-
   private _onAppClicked(app: Shell.App): void {
     const firstWindow = this._findFirstWindow(app);
 
@@ -452,9 +416,12 @@ export class DockManager {
     const monitor = Main.layoutManager.primaryMonitor;
     if (!monitor) return;
 
-    const iconCount = this._iconManager?.getIconCount() ?? 0;
-    const hasSeparator = this._iconManager?.hasSeparator() ?? false;
-    const hasAppButton = this._iconManager?.hasAppButton() ?? false;
+    const iconManager = this._iconManager;
+    if (!iconManager) return;
+
+    const iconCount = iconManager.getIconCount();
+    const hasSeparator = iconManager.hasSeparator();
+    const hasAppButton = iconManager.hasAppButton();
     const iconPadded = (this._settings?.get_int("icon-size") ?? 48) + 12;
     const spacing = 6;
     const padding = 20;

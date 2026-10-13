@@ -833,7 +833,7 @@ export class IconManager {
       }
       while (indicatorBox.get_n_children() > needed) {
         const last = indicatorBox.get_n_children() - 1;
-        indicatorBox.get_child_at_index(last)?.destroy();
+        (indicatorBox.get_child_at_index(last) as InstanceType<typeof St.Widget>).destroy();
       }
     } else {
       // Horizontal bar style.
@@ -1314,6 +1314,7 @@ export class IconManager {
   private _showContextMenu(actor: IconActor, app: Shell.App): void {
     this._closeContextMenu();
     if (!this._menuManager) return;
+    const menuManager = this._menuManager;
 
     const menu = new PopupMenu.PopupMenu(actor, 0.5, St.Side.TOP);
     (menu as unknown as { blockSourceEvents: boolean }).blockSourceEvents = true;
@@ -1358,7 +1359,7 @@ export class IconManager {
       }
     });
 
-    this._menuManager.addMenu(menu);
+    menuManager.addMenu(menu);
     this._onContextMenuActorChanged?.(menu.actor);
 
     GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
@@ -1366,7 +1367,7 @@ export class IconManager {
         return GLib.SOURCE_REMOVE;
       }
       menu.open(BoxPointer.PopupAnimation.FULL);
-      this._menuManager?.ignoreRelease?.();
+      menuManager.ignoreRelease();
       return GLib.SOURCE_REMOVE;
     });
   }
@@ -1437,7 +1438,7 @@ export class IconManager {
 
     const padded = this._iconSize + 12;
 
-    this._appButton = new St.BoxLayout({
+    const appButton = new St.BoxLayout({
       style_class: "macos-dock-app-button",
       reactive: true,
       track_hover: true,
@@ -1447,15 +1448,16 @@ export class IconManager {
       width: padded,
       height: padded + 4,
     });
+    this._appButton = appButton;
 
     this._appButtonIcon = new St.Icon({
       icon_name: "view-app-grid-symbolic",
       icon_size: this._iconSize,
       style_class: "macos-dock-app-button-icon",
     });
-    this._appButton.add_child(this._appButtonIcon);
+    appButton.add_child(this._appButtonIcon);
 
-    this._signals.connect(this._appButton, "button-press-event", () => {
+    this._signals.connect(appButton, "button-press-event", () => {
       if (Main.overview.visible) {
         Main.overview.hide();
       } else {
@@ -1465,15 +1467,15 @@ export class IconManager {
     });
 
     // Tooltip on hover
-    this._signals.connect(this._appButton, "notify::hover", () => {
-      if (this._appButton?.hover) {
-        this._showTooltip(this._appButton, "Applications");
+    this._signals.connect(appButton, "notify::hover", () => {
+      if (appButton.hover) {
+        this._showTooltip(appButton, "Applications");
       } else {
         this._hideTooltip();
       }
     });
 
-    this._container.add_child(this._appButton);
+    this._container.add_child(appButton);
 
     // Notify dock to resize
     if (this._onIconsChanged) this._onIconsChanged();
