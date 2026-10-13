@@ -300,7 +300,7 @@ export class DockVisibility {
 
   private _show(): void {
     if (this._animating) {
-      (this._animation as { cancel: () => void })?.cancel();
+      (this._animation as { cancel: () => void }).cancel();
       this._animation = null;
       this._animating = false;
     }
