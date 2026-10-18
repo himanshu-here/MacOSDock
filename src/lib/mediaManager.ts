@@ -43,22 +43,10 @@ export class MediaManager {
     return this._activePlayer?.status === "Playing";
   }
 
-  async start(): Promise<void> {
-    try {
-      this._bus = await new Promise<Gio.DBusConnection>((resolve, reject) => {
-        Gio.bus_get(Gio.BusType.SESSION, null, (_source, result) => {
-          try {
-            resolve(Gio.bus_get_finish(result));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      });
-      this._watchNames();
-      await this._discoverPlayers();
-    } catch (e) {
-      console.error("[macos-dock][media] start error:", e);
-    }
+  start(): void {
+    this._bus = Gio.DBus.session;
+    this._watchNames();
+    this._discoverPlayers();
   }
 
   stop(): void {
@@ -113,47 +101,44 @@ export class MediaManager {
     this._watchIds.push(signalId);
   }
 
-  private async _discoverPlayers(): Promise<void> {
+  private _discoverPlayers(): void {
     if (!this._bus) return;
     const bus = this._bus;
 
-    try {
-      const result = await new Promise<GLib.Variant>((resolve, reject) => {
-        bus.call(
-          "org.freedesktop.DBus",
-          "/org/freedesktop/DBus",
-          "org.freedesktop.DBus",
-          "ListNames",
-          null,
-          new GLib.VariantType("(as)"),
-          Gio.DBusCallFlags.NONE,
-          -1,
-          null,
-          (_conn, res) => {
-            try {
-              resolve(bus.call_finish(res));
-            } catch (e) {
-              reject(e);
-            }
-          },
-        );
-      });
-      const [names] = result.deepUnpack() as [string[]];
-      const mprisNames = names.filter((n) => n.startsWith("org.mpris.MediaPlayer2"));
-      for (const name of mprisNames) {
-        await this._addPlayer(name, name);
-      }
-    } catch (e) {
-      console.error("[macos-dock][media] discover error:", e);
-    }
+    bus.call(
+      "org.freedesktop.DBus",
+      "/org/freedesktop/DBus",
+      "org.freedesktop.DBus",
+      "ListNames",
+      null,
+      new GLib.VariantType("(as)"),
+      Gio.DBusCallFlags.NONE,
+      -1,
+      null,
+      (_connection, res) => {
+        let names: string[];
+        try {
+          [names] = bus.call_finish(res).deepUnpack() as [string[]];
+        } catch (e) {
+          console.error("[macos-dock][media] discover error:", e);
+          return;
+        }
+        for (const name of names) {
+          if (name.startsWith("org.mpris.MediaPlayer2")) {
+            this._addPlayer(name, name);
+          }
+        }
+      },
+    );
   }
 
-  private async _addPlayer(busName: string, uniqueName: string): Promise<void> {
+  private _addPlayer(busName: string, uniqueName: string): void {
     if (this._players.has(uniqueName)) return;
     if (!this._bus) return;
 
+    let proxy: Gio.DBusProxy;
     try {
-      const proxy = Gio.DBusProxy.new_sync(
+      proxy = Gio.DBusProxy.new_sync(
         this._bus,
         Gio.DBusProxyFlags.NONE,
         null,
@@ -162,33 +147,34 @@ export class MediaManager {
         MPRIS_PLAYER_IFACE,
         null,
       );
-
-      const info: MprisPlayerInfo = {
-        busName,
-        uniqueName,
-        proxy,
-        title: "",
-        artist: "",
-        status: "Stopped",
-        desktopEntry: "",
-      };
-
-      this._players.set(uniqueName, info);
-
-      this._updateDesktopEntry(info);
-      this._updateMetadata(info);
-      this._updatePlaybackStatus(info);
-
-      this._signals.connect(proxy, "g-properties-changed", () => {
-        this._updateMetadata(info);
-        this._updatePlaybackStatus(info);
-        this._pickActivePlayer();
-      });
-
-      this._pickActivePlayer();
     } catch (e) {
       console.error(`[macos-dock] Failed to add player ${busName}:`, e);
+      return;
     }
+
+    const info: MprisPlayerInfo = {
+      busName,
+      uniqueName,
+      proxy,
+      title: "",
+      artist: "",
+      status: "Stopped",
+      desktopEntry: "",
+    };
+
+    this._players.set(uniqueName, info);
+
+    this._updateDesktopEntry(info);
+    this._updateMetadata(info);
+    this._updatePlaybackStatus(info);
+
+    this._signals.connect(proxy, "g-properties-changed", () => {
+      this._updateMetadata(info);
+      this._updatePlaybackStatus(info);
+      this._pickActivePlayer();
+    });
+
+    this._pickActivePlayer();
   }
 
   private _removePlayer(uniqueName: string): void {
@@ -239,6 +225,7 @@ export class MediaManager {
   private _updateDesktopEntry(info: MprisPlayerInfo): void {
     if (!this._bus) return;
 
+    let entry: GLib.Variant | null = null;
     try {
       const rootProxy = Gio.DBusProxy.new_sync(
         this._bus,
@@ -249,13 +236,14 @@ export class MediaManager {
         "org.mpris.MediaPlayer2",
         null,
       );
-      const entry = rootProxy.get_cached_property("DesktopEntry");
-      if (entry) {
-        info.desktopEntry = entry.deepUnpack() as string;
-        return;
-      }
+      entry = rootProxy.get_cached_property("DesktopEntry");
     } catch {
       // Fall back to parsing the well-known bus name below.
+    }
+
+    if (entry) {
+      info.desktopEntry = entry.deepUnpack() as string;
+      return;
     }
 
     const prefix = "org.mpris.MediaPlayer2.";
