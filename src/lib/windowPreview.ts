@@ -368,17 +368,13 @@ export class WindowPreviewPopup {
   private _updateFocusHighlights(): void {
     const tracker = Shell.WindowTracker.get_default();
     for (const thumb of this._thumbs) {
-      try {
-        const isFocused = tracker.focus_app === thumb.app && thumb.metaWindow.has_focus();
-        if (isFocused) {
-          if (!thumb.actor.has_style_class_name("macos-dock-preview-focused")) {
-            thumb.actor.add_style_class_name("macos-dock-preview-focused");
-          }
-        } else {
-          thumb.actor.remove_style_class_name("macos-dock-preview-focused");
+      const isFocused = tracker.focus_app === thumb.app && thumb.metaWindow.has_focus();
+      if (isFocused) {
+        if (!thumb.actor.has_style_class_name("macos-dock-preview-focused")) {
+          thumb.actor.add_style_class_name("macos-dock-preview-focused");
         }
-      } catch {
-        // Window or actor may have already been closed or destroyed
+      } else {
+        thumb.actor.remove_style_class_name("macos-dock-preview-focused");
       }
     }
   }
@@ -421,13 +417,6 @@ export class WindowPreviewPopup {
       this._popup = null;
     }
 
-    for (const thumb of this._thumbs) {
-      try {
-        thumb.actor.destroy();
-      } catch {
-        // May have already been destroyed as a child of this._popup
-      }
-    }
     this._thumbs = [];
 
     this._visible = false;
