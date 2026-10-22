@@ -21,8 +21,9 @@
 - **Window previews** — live thumbnail previews of open windows on hover
 - **Dock customization** — adjustable opacity, background color, border radius, and blur effect
 - **Multiple positions** — place the dock at the bottom, top, left, or right edge
-- **Keyboard navigation** — Super+D to toggle dock, Super+1-9 to focus apps
-- **Applications button** — access all installed apps from the dock
+- **Keyboard navigation** — optional Super+D dock toggle and Super+1-0 app focus shortcuts (disabled by default)
+- **Applications button** — access all installed apps from either end of the dock
+- **Custom CSS** — edit and apply dock styles from the preferences window
 - **Configurable performance** settings for framerate, animation duration, and icon quality
 - **Native GNOME integration** — hides the default dash to avoid conflicts
 
@@ -93,9 +94,15 @@ gnome-extensions prefs macos-dock@vinnytherobot.github.io
 
 | Shortcut       | Action                     |
 | -------------- | -------------------------- |
-| Super+D        | Toggle dock visibility     |
-| Super+1-9      | Focus app 1-9 in dock      |
-| Super+0        | Focus app 10 in dock       |
+| Super+D        | Toggle dock visibility (when keyboard navigation is enabled) |
+| Super+1-9      | Focus app 1-9 in dock (when keyboard navigation is enabled) |
+| Super+0        | Focus app 10 in dock (when keyboard navigation is enabled) |
+
+Keyboard navigation is disabled by default so GNOME's own shortcuts remain available. Enable it in preferences to register the dock shortcuts. Their combinations are stored in the extension's GSettings keys (`toggle-dock` and `focus-app-1` through `focus-app-10`).
+
+### Custom CSS
+
+Open **Preferences → Background → Custom CSS** to write and apply a stylesheet. The editor accepts GNOME Shell CSS selectors. Useful dock classes include `.macos-dock-container`, `.macos-dock-icon`, `.macos-dock-app-button`, `.macos-dock-indicator-dot`, and `.macos-dock-indicator-bar`. Scope rules to these classes to avoid changing unrelated Shell elements. Use `!important` when overriding a property set directly by the extension, such as dock background color or corner radius.
 
 ## Development
 
