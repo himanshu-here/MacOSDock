@@ -1,11 +1,12 @@
 import Adw from "gi://Adw";
 import Gtk from "gi://Gtk";
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
+import { SignalManager } from "./lib/signalManager.js";
 
 const BIND_FLAGS = 0 | 1 | 2 | 4; // DEFAULT | GET | SET | NO_SENSITIVITY
 
 export default class MacosDockPreferences extends ExtensionPreferences {
-  private _signalConnections: { source: { disconnect(id: number): void }; id: number }[] = [];
+  private _signals = new SignalManager();
 
   async fillPreferencesWindow(window: Adw.PreferencesWindow): Promise<void> {
     const settings = this.getSettings();
@@ -53,13 +54,27 @@ export default class MacosDockPreferences extends ExtensionPreferences {
       model: positionModel,
       selected: settings.get_int("dock-position"),
     });
-    positionRow.connect("notify::selected", () => {
+    this._signals.connect(positionRow, "notify::selected", () => {
       settings.set_int("dock-position", positionRow.selected);
     });
-    this._trackSignal(settings, "changed::dock-position", () => {
+    this._signals.connect(settings, "changed::dock-position", () => {
       positionRow.selected = settings.get_int("dock-position");
     });
     positionGroup.add(positionRow);
+
+    const appButtonPositionRow = new Adw.ComboRow({
+      title: "Applications button position",
+      subtitle: "Choose which end of the dock holds the Show Apps button",
+      model: new Gtk.StringList({ strings: ["Start of dock", "End of dock"] }),
+      selected: settings.get_int("show-applications-button-position"),
+    });
+    this._signals.connect(appButtonPositionRow, "notify::selected", () => {
+      settings.set_int("show-applications-button-position", appButtonPositionRow.selected);
+    });
+    this._signals.connect(settings, "changed::show-applications-button-position", () => {
+      appButtonPositionRow.selected = settings.get_int("show-applications-button-position");
+    });
+    positionGroup.add(appButtonPositionRow);
 
     // Background group
     const bgGroup = new Adw.PreferencesGroup({
@@ -102,6 +117,69 @@ export default class MacosDockPreferences extends ExtensionPreferences {
     });
     settings.bind("dock-blur-enabled", blurRow, "active", BIND_FLAGS);
     bgGroup.add(blurRow);
+
+    const customCssRow = new Adw.ExpanderRow({
+      title: "Custom CSS",
+      subtitle: "Apply a stylesheet to customize dock elements",
+    });
+    const customCssContent = new Gtk.Box({
+      orientation: Gtk.Orientation.VERTICAL,
+      spacing: 12,
+      margin_top: 8,
+      margin_bottom: 8,
+      margin_start: 12,
+      margin_end: 12,
+    });
+    const customCssHelp = new Gtk.Label({
+      label:
+        "Use dock selectors such as .macos-dock-container, .macos-dock-icon, and .macos-dock-app-button.",
+      wrap: true,
+      xalign: 0,
+    });
+    customCssContent.append(customCssHelp);
+
+    const customCssEditor = new Gtk.TextView({
+      monospace: true,
+      wrap_mode: Gtk.WrapMode.NONE,
+      accepts_tab: true,
+      height_request: 180,
+    });
+    customCssEditor.buffer.set_text(settings.get_string("custom-css"), -1);
+    const customCssScroll = new Gtk.ScrolledWindow({
+      hscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
+      vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
+      min_content_height: 180,
+      child: customCssEditor,
+    });
+    customCssContent.append(customCssScroll);
+
+    const customCssActions = new Gtk.Box({
+      orientation: Gtk.Orientation.HORIZONTAL,
+      spacing: 6,
+      halign: Gtk.Align.END,
+    });
+    const resetCssButton = new Gtk.Button({ label: "Reset" });
+    this._signals.connect(resetCssButton, "clicked", () => {
+      customCssEditor.buffer.set_text("", -1);
+      settings.set_string("custom-css", "");
+    });
+    customCssActions.append(resetCssButton);
+
+    const applyCssButton = new Gtk.Button({
+      label: "Apply CSS",
+      css_classes: ["suggested-action"],
+    });
+    this._signals.connect(applyCssButton, "clicked", () => {
+      const [start, end] = customCssEditor.buffer.get_bounds();
+      settings.set_string("custom-css", customCssEditor.buffer.get_text(start, end, true));
+    });
+    customCssActions.append(applyCssButton);
+    customCssContent.append(customCssActions);
+    customCssRow.add_row(customCssContent);
+    bgGroup.add(customCssRow);
+    this._signals.connect(settings, "changed::custom-css", () => {
+      customCssEditor.buffer.set_text(settings.get_string("custom-css"), -1);
+    });
 
     // Behavior group
     const behaviorGroup = new Adw.PreferencesGroup({
@@ -153,7 +231,8 @@ export default class MacosDockPreferences extends ExtensionPreferences {
 
     const keyboardNavRow = new Adw.SwitchRow({
       title: "Keyboard navigation",
-      subtitle: "Super+D to toggle dock, Super+1-9 to focus apps",
+      subtitle:
+        "Register dock shortcuts (Super+D and Super+1–0). Disabled by default to keep GNOME shortcuts free.",
     });
     settings.bind("enable-keyboard-nav", keyboardNavRow, "active", BIND_FLAGS);
     behaviorGroup.add(keyboardNavRow);
@@ -188,10 +267,10 @@ export default class MacosDockPreferences extends ExtensionPreferences {
       model: workspaceModeModel,
       selected: settings.get_int("dock-workspace-mode"),
     });
-    workspaceModeRow.connect("notify::selected", () => {
+    this._signals.connect(workspaceModeRow, "notify::selected", () => {
       settings.set_int("dock-workspace-mode", workspaceModeRow.selected);
     });
-    this._trackSignal(settings, "changed::dock-workspace-mode", () => {
+    this._signals.connect(settings, "changed::dock-workspace-mode", () => {
       workspaceModeRow.selected = settings.get_int("dock-workspace-mode");
     });
     behaviorGroup.add(workspaceModeRow);
@@ -244,10 +323,10 @@ export default class MacosDockPreferences extends ExtensionPreferences {
       adjustment: magScaleAdj,
       digits: 2,
     });
-    magScaleAdj.connect("value-changed", () => {
+    this._signals.connect(magScaleAdj, "value-changed", () => {
       settings.set_double("magnification-scale", magScaleAdj.get_value());
     });
-    this._trackSignal(settings, "changed::magnification-scale", () => {
+    this._signals.connect(settings, "changed::magnification-scale", () => {
       magScaleAdj.set_value(settings.get_double("magnification-scale"));
     });
     magGroup.add(magScaleRow);
@@ -265,10 +344,10 @@ export default class MacosDockPreferences extends ExtensionPreferences {
       subtitle: "How far the magnification wave reaches (pixels)",
       adjustment: magFalloffAdj,
     });
-    magFalloffAdj.connect("value-changed", () => {
+    this._signals.connect(magFalloffAdj, "value-changed", () => {
       settings.set_int("magnification-falloff", magFalloffAdj.get_value());
     });
-    this._trackSignal(settings, "changed::magnification-falloff", () => {
+    this._signals.connect(settings, "changed::magnification-falloff", () => {
       magFalloffAdj.set_value(settings.get_int("magnification-falloff"));
     });
     magGroup.add(magFalloffRow);
@@ -296,10 +375,10 @@ export default class MacosDockPreferences extends ExtensionPreferences {
       model: indicatorStyleModel,
       selected: settings.get_int("running-indicator-style"),
     });
-    indicatorStyleRow.connect("notify::selected", () => {
+    this._signals.connect(indicatorStyleRow, "notify::selected", () => {
       settings.set_int("running-indicator-style", indicatorStyleRow.selected);
     });
-    this._trackSignal(settings, "changed::running-indicator-style", () => {
+    this._signals.connect(settings, "changed::running-indicator-style", () => {
       indicatorStyleRow.selected = settings.get_int("running-indicator-style");
     });
     indGroup.add(indicatorStyleRow);
@@ -340,11 +419,11 @@ export default class MacosDockPreferences extends ExtensionPreferences {
       selected:
         settings.get_int("icon-quality") === 4 ? 2 : settings.get_int("icon-quality") === 2 ? 1 : 0,
     });
-    qualityRow.connect("notify::selected", () => {
+    this._signals.connect(qualityRow, "notify::selected", () => {
       const values = [1, 2, 4];
       settings.set_int("icon-quality", values[qualityRow.selected]);
     });
-    this._trackSignal(settings, "changed::icon-quality", () => {
+    this._signals.connect(settings, "changed::icon-quality", () => {
       const v = settings.get_int("icon-quality");
       qualityRow.selected = v === 4 ? 2 : v === 2 ? 1 : 0;
     });
@@ -363,36 +442,17 @@ export default class MacosDockPreferences extends ExtensionPreferences {
             ? 1
             : 0,
     });
-    fpsRow.connect("notify::selected", () => {
+    this._signals.connect(fpsRow, "notify::selected", () => {
       const values = [30, 60, 120];
       settings.set_int("magnification-framerate", values[fpsRow.selected]);
     });
-    this._trackSignal(settings, "changed::magnification-framerate", () => {
+    this._signals.connect(settings, "changed::magnification-framerate", () => {
       const v = settings.get_int("magnification-framerate");
       fpsRow.selected = v === 120 ? 2 : v === 60 ? 1 : 0;
     });
     perfGroup.add(fpsRow);
 
     // Disconnect all tracked signals when the window is closed.
-    window.connect("close-request", () => this._disconnectAll());
-  }
-
-  private _trackSignal(
-    source: {
-      connect(signal: string, callback: (...args: unknown[]) => void): number;
-      disconnect(id: number): void;
-    },
-    signal: string,
-    callback: (...args: unknown[]) => void,
-  ): void {
-    const id = source.connect(signal, callback);
-    this._signalConnections.push({ source, id });
-  }
-
-  private _disconnectAll(): void {
-    for (const conn of this._signalConnections) {
-      conn.source.disconnect(conn.id);
-    }
-    this._signalConnections = [];
+    this._signals.connect(window, "close-request", () => this._signals.disconnectAll());
   }
 }

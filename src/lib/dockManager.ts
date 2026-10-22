@@ -1,5 +1,5 @@
 import Clutter from "gi://Clutter";
-import type Gio from "gi://Gio";
+import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
@@ -31,6 +31,10 @@ export class DockManager {
   private _blurEffect: Shell.BlurEffect | null = null;
   private _previewPopup: WindowPreviewPopup | null = null;
   private _mediaManager: MediaManager | null = null;
+  private _theme: St.Theme | null = null;
+  private _customCssFile: Gio.File | null = null;
+  private _customCssDirectory: Gio.File | null = null;
+  private _customCss = "";
 
   private static readonly MARGIN_BOTTOM = 12;
   private static readonly MIN_DOCK_WIDTH = 300;
@@ -49,6 +53,8 @@ export class DockManager {
 
   enable(settings: Gio.Settings): void {
     this._settings = settings;
+    this._theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
+    this._applyCustomCss(settings.get_string("custom-css"));
 
     // Hide the default GNOME dash to avoid conflict.
     this._hideDefaultDash();
@@ -82,6 +88,7 @@ export class DockManager {
       }
     });
     iconManager.setShowRunningApps(settings.get_boolean("show-running-apps"));
+    iconManager.setAppButtonPosition(settings.get_int("show-applications-button-position"));
     iconManager.setWorkspaceMode(settings.get_int("dock-workspace-mode"));
     iconManager.setMediaIndicatorEnabled(settings.get_boolean("media-indicator"));
     iconManager.setMediaControlsEnabled(settings.get_boolean("media-controls"));
@@ -190,6 +197,13 @@ export class DockManager {
       iconManager.setShowAppButton(settings.get_boolean("show-applications-button"));
       this._updatePosition();
     });
+    this._signals.connect(settings, "changed::show-applications-button-position", () => {
+      iconManager.setAppButtonPosition(settings.get_int("show-applications-button-position"));
+      this._updatePosition();
+    });
+    this._signals.connect(settings, "changed::custom-css", () => {
+      this._applyCustomCss(settings.get_string("custom-css"));
+    });
     this._signals.connect(settings, "changed::enable-keyboard-nav", () => {
       this._removeKeybindings();
       this._registerKeybindings();
@@ -272,6 +286,8 @@ export class DockManager {
       this._container.destroy();
       this._container = null;
     }
+
+    this._removeCustomCss();
 
     // Restore the default GNOME dash.
     this._showDefaultDash();
@@ -529,6 +545,86 @@ export class DockManager {
     } else if (!blurEnabled && this._blurEffect) {
       this._container.remove_effect(this._blurEffect);
       this._blurEffect = null;
+    }
+  }
+
+  private _applyCustomCss(css: string): void {
+    if (!this._theme || css === this._customCss) return;
+
+    if (!css.trim()) {
+      this._clearCustomCss();
+      return;
+    }
+
+    const checksum = GLib.compute_checksum_for_string(GLib.ChecksumType.SHA256, css, -1);
+    if (!checksum) return;
+
+    const directoryPath = GLib.build_filenamev([GLib.get_user_cache_dir(), "macos-dock"]);
+    const directory = Gio.File.new_for_path(directoryPath);
+    const file = Gio.File.new_for_path(GLib.build_filenamev([directoryPath, `${checksum}.css`]));
+    let stylesheetLoaded = false;
+
+    try {
+      if (GLib.mkdir_with_parents(directoryPath, 0o700) !== 0) {
+        throw new Error(`Could not create custom CSS cache directory: ${directoryPath}`);
+      }
+      this._customCssDirectory = directory;
+      file.replace_contents(css, null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+
+      if (!this._theme.load_stylesheet(file)) {
+        this._deleteCustomCssFile(file);
+        if (!this._customCssFile) this._removeCustomCssDirectory();
+        console.error("MacOS Dock: GNOME Shell could not load the custom CSS stylesheet.");
+        return;
+      }
+      stylesheetLoaded = true;
+
+      const previousFile = this._customCssFile;
+      this._customCssFile = file;
+      this._customCss = css;
+      if (previousFile) {
+        this._theme.unload_stylesheet(previousFile);
+        this._deleteCustomCssFile(previousFile);
+      }
+    } catch (error) {
+      if (!stylesheetLoaded) this._deleteCustomCssFile(file);
+      if (!this._customCssFile) this._removeCustomCssDirectory();
+      console.error(`MacOS Dock: Failed to apply custom CSS: ${error}`);
+    }
+  }
+
+  private _removeCustomCss(): void {
+    this._clearCustomCss();
+    this._theme = null;
+  }
+
+  private _clearCustomCss(): void {
+    if (this._theme && this._customCssFile) {
+      this._theme.unload_stylesheet(this._customCssFile);
+      this._deleteCustomCssFile(this._customCssFile);
+    }
+
+    this._customCssFile = null;
+    this._customCss = "";
+    this._removeCustomCssDirectory();
+  }
+
+  private _deleteCustomCssFile(file: Gio.File): void {
+    try {
+      if (file.query_exists(null)) file.delete(null);
+    } catch (error) {
+      console.error(`MacOS Dock: Failed to remove cached custom CSS: ${error}`);
+    }
+  }
+
+  private _removeCustomCssDirectory(): void {
+    if (!this._customCssDirectory) return;
+
+    try {
+      if (this._customCssDirectory.query_exists(null)) this._customCssDirectory.delete(null);
+      this._customCssDirectory = null;
+    } catch (error) {
+      console.error(`MacOS Dock: Failed to remove custom CSS cache directory: ${error}`);
     }
   }
 

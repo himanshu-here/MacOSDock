@@ -104,6 +104,7 @@ export class IconManager {
   private _appButton: InstanceType<typeof St.BoxLayout> | null = null;
   private _appButtonIcon: InstanceType<typeof St.Icon> | null = null;
   private _showAppButton: boolean = true;
+  private _appButtonPosition: number = 0;
   private _showRunningApps: boolean = true;
   private _workspaceMode: number = 0; // 0=all, 1=current-only
   private _mediaIndicatorEnabled: boolean = true;
@@ -255,6 +256,11 @@ export class IconManager {
   setShowAppButton(show: boolean): void {
     this._showAppButton = show;
     this._updateAppButton();
+  }
+
+  setAppButtonPosition(position: number): void {
+    this._appButtonPosition = position === 1 ? 1 : 0;
+    this._positionAppButton();
   }
 
   setShowRunningApps(enabled: boolean): void {
@@ -459,6 +465,7 @@ export class IconManager {
 
     // Add applications button at the end
     this._updateAppButton();
+    this._positionAppButton();
   }
 
   private _onWindowChange(): void {
@@ -676,6 +683,7 @@ export class IconManager {
     this._container.add_child(actor);
     this._icons.set(appId, actor);
     this._apps.set(appId, app);
+    this._positionAppButton();
 
     if (this._dragReorderEnabled && this._favorites.includes(appId)) {
       this._makeDraggable(actor, appId);
@@ -1008,6 +1016,7 @@ export class IconManager {
 
     this._container.remove_child(actor);
     this._container.insert_child_at_index(actor, desired);
+    this._positionAppButton();
   }
 
   private _handleDragOver(
@@ -1222,6 +1231,7 @@ export class IconManager {
     actors.forEach((actor, i) => {
       this._container.insert_child_at_index(actor, i);
     });
+    this._positionAppButton();
   }
 
   private _writeFavorites(order: string[]): boolean {
@@ -1422,7 +1432,8 @@ export class IconManager {
         break;
       }
     }
-    this._container.insert_child_at_index(this._separator, insertIndex);
+    const appButtonOffset = this._appButton && this._appButtonPosition === 0 ? 1 : 0;
+    this._container.insert_child_at_index(this._separator, insertIndex + appButtonOffset);
   }
 
   private _updateAppButton(): void {
@@ -1476,6 +1487,7 @@ export class IconManager {
     });
 
     this._container.add_child(appButton);
+    this._positionAppButton();
 
     // Notify dock to resize
     if (this._onIconsChanged) this._onIconsChanged();
@@ -1490,5 +1502,15 @@ export class IconManager {
 
     // Notify dock to resize
     if (this._onIconsChanged) this._onIconsChanged();
+  }
+
+  private _positionAppButton(): void {
+    if (!this._appButton) return;
+
+    const childCount = this._container.get_n_children();
+    const targetIndex = this._appButtonPosition === 0 ? 0 : childCount - 1;
+    if (this._container.get_child_at_index(targetIndex) === this._appButton) return;
+
+    this._container.set_child_at_index(this._appButton, targetIndex);
   }
 }
